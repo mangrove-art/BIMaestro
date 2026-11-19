@@ -35,7 +35,7 @@ namespace Page
 
         private static ButtonUpdateNote LocalizeNote(ButtonUpdateNote note)
         {
-            if (note == null || !UiLanguage.IsEnglish)
+            if (note == null || UiLanguage.IsFrench)
                 return note;
 
             return new ButtonUpdateNote

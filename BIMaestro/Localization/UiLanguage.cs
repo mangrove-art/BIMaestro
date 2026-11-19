@@ -13,6 +13,10 @@ using System.Windows.Threading;
 
 namespace BIMaestro.Localization
 {
+    /// <summary>
+    /// Built-in choices. Community languages loaded from JSON files have no enum value:
+    /// they are identified by their code (see <see cref="UiLanguage.ChoiceCode"/>).
+    /// </summary>
     public enum UiLanguageChoice
     {
         Automatic,
@@ -22,53 +26,103 @@ namespace BIMaestro.Localization
 
     public sealed class UiLanguageOption
     {
-        public UiLanguageOption(UiLanguageChoice value, string label)
+        public UiLanguageOption(string code, string label)
         {
-            Value = value;
+            Code = code;
             Label = label;
         }
 
-        public UiLanguageChoice Value { get; }
+        public UiLanguageOption(UiLanguageChoice value, string label)
+            : this(UiLanguage.ToCode(value), label)
+        {
+        }
+
+        /// <summary>"auto", "fr", "en" or the code of a language pack (e.g. "de").</summary>
+        public string Code { get; }
         public string Label { get; }
     }
 
     public static class UiLanguage
     {
+        public const string AutomaticCode = "auto";
+        public const string FrenchCode = "fr";
+        public const string EnglishCode = "en";
+
         private const string SettingsFileName = "ui-language.json";
         private static bool _windowHookInstalled;
-        private static bool _automaticIsEnglish = !string.Equals(
-            CultureInfo.CurrentUICulture.TwoLetterISOLanguageName,
-            "fr",
-            StringComparison.OrdinalIgnoreCase);
+        private static string _revitLanguage;
+        private static volatile string _resolvedCode;
 
-        public static UiLanguageChoice Choice { get; private set; } = LoadChoice();
+        /// <summary>Saved choice: "auto", "fr", "en" or the code of a language pack.</summary>
+        public static string ChoiceCode { get; private set; } = LoadChoice();
 
-        public static bool IsEnglish
+        /// <summary>Built-in choice; <see cref="UiLanguageChoice.Automatic"/> when a language pack is selected.</summary>
+        public static UiLanguageChoice Choice => ChoiceCode switch
+        {
+            FrenchCode => UiLanguageChoice.French,
+            EnglishCode => UiLanguageChoice.English,
+            _ => UiLanguageChoice.Automatic
+        };
+
+        /// <summary>
+        /// Code de la langue effectivement utilisée par l'interface BIMaestro
+        /// ("fr", "en" ou le code d'un pack de langue, p. ex. "de").
+        /// </summary>
+        public static string CurrentLanguageCode => _resolvedCode ?? (_resolvedCode = ResolveCode());
+
+        public static bool IsFrench => CurrentLanguageCode == FrenchCode;
+
+        /// <summary>True only for English. Use <c>!IsFrench</c> for "anything but French".</summary>
+        public static bool IsEnglish => CurrentLanguageCode == EnglishCode;
+
+        /// <summary>Culture for dates and numbers shown in the interface.</summary>
+        public static CultureInfo Culture
         {
             get
             {
-                if (Choice == UiLanguageChoice.English) return true;
-                if (Choice == UiLanguageChoice.French) return false;
-                return _automaticIsEnglish;
+                string code = CurrentLanguageCode;
+                if (code == FrenchCode) return CultureInfo.GetCultureInfo("fr-FR");
+                if (code == EnglishCode) return CultureInfo.GetCultureInfo("en-GB");
+                try
+                {
+                    if (LanguagePacks.TryGet(code, out LanguagePack pack))
+                        return CultureInfo.GetCultureInfo(string.IsNullOrWhiteSpace(pack.Culture) ? pack.Code : pack.Culture);
+                }
+                catch (CultureNotFoundException)
+                {
+                }
+                return CultureInfo.GetCultureInfo("en-GB");
             }
         }
 
-        /// <summary>
-        /// Code de la langue effectivement utilisée par l'interface BIMaestro.
-        /// </summary>
-        public static string CurrentLanguageCode => IsEnglish ? "en" : "fr";
-
-        public static IReadOnlyList<UiLanguageOption> Options => new[]
+        public static IReadOnlyList<UiLanguageOption> Options
         {
-            new UiLanguageOption(UiLanguageChoice.Automatic, T("Automatique (langue de Revit)", "Automatic (Revit language)")),
-            new UiLanguageOption(UiLanguageChoice.French, "Français"),
-            new UiLanguageOption(UiLanguageChoice.English, "English")
-        };
+            get
+            {
+                var options = new List<UiLanguageOption>
+                {
+                    new UiLanguageOption(AutomaticCode, T("Automatique (langue de Revit)", "Automatic (Revit language)")),
+                    new UiLanguageOption(FrenchCode, "Français"),
+                    new UiLanguageOption(EnglishCode, "English")
+                };
+                foreach (LanguagePack pack in LanguagePacks.All)
+                    options.Add(new UiLanguageOption(pack.Code, pack.Name));
+
+                // Keep a saved pack visible even if its file was removed, so the
+                // settings window does not silently switch the choice.
+                if (!options.Exists(option => string.Equals(option.Code, ChoiceCode, StringComparison.OrdinalIgnoreCase)))
+                    options.Add(new UiLanguageOption(ChoiceCode, ChoiceCode));
+                return options;
+            }
+        }
 
         public static void Initialize(string revitLanguage = null)
         {
             if (!string.IsNullOrWhiteSpace(revitLanguage))
-                _automaticIsEnglish = !string.Equals(revitLanguage, "French", StringComparison.OrdinalIgnoreCase);
+            {
+                _revitLanguage = revitLanguage.Trim();
+                _resolvedCode = null;
+            }
             if (_windowHookInstalled) return;
             EventManager.RegisterClassHandler(
                 typeof(Window),
@@ -83,29 +137,128 @@ namespace BIMaestro.Localization
             _windowHookInstalled = true;
         }
 
-        public static bool SetChoice(UiLanguageChoice choice)
+        public static bool SetChoice(UiLanguageChoice choice) => SetChoice(ToCode(choice));
+
+        public static bool SetChoice(string code)
         {
-            UiLanguageChoice previousChoice = Choice;
-            Choice = choice;
-            if (SaveChoice(choice)) return true;
-            Choice = previousChoice;
+            code = NormalizeCode(code);
+            string previousCode = ChoiceCode;
+            ChoiceCode = code;
+            _resolvedCode = null;
+            if (SaveChoice(code)) return true;
+            ChoiceCode = previousCode;
+            _resolvedCode = null;
             return false;
         }
 
+        /// <summary>
+        /// Returns the text in the interface language. French and English come from the
+        /// arguments; other languages are looked up in their pack by the English text,
+        /// then by the French text, and fall back to English.
+        /// </summary>
         public static string T(string french, string english)
         {
-            return IsEnglish ? english : french;
+            string code = CurrentLanguageCode;
+            if (code == FrenchCode) return french;
+            if (code == EnglishCode) return english;
+            return TranslateFromPack(code, french, english) ?? english ?? french;
         }
 
+        /// <summary>
+        /// Translates a French interface text (typically from XAML) using the built-in
+        /// English catalog and, for other languages, the active pack.
+        /// </summary>
         public static string T(string text)
         {
-            if (!IsEnglish || string.IsNullOrWhiteSpace(text)) return text;
-            return UiTextCatalog.TryGetEnglish(text, out var english) ? english : text;
+            if (string.IsNullOrWhiteSpace(text)) return text;
+            string code = CurrentLanguageCode;
+            if (code == FrenchCode) return text;
+
+            UiTextCatalog.TryGetEnglish(text, out string english);
+            if (code == EnglishCode) return english ?? text;
+            return TranslateFromPack(code, text, english) ?? english ?? text;
+        }
+
+        internal static bool IsBuiltInCode(string code)
+        {
+            return string.Equals(code, AutomaticCode, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(code, FrenchCode, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(code, EnglishCode, StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static string ToCode(UiLanguageChoice choice)
+        {
+            switch (choice)
+            {
+                case UiLanguageChoice.French: return FrenchCode;
+                case UiLanguageChoice.English: return EnglishCode;
+                default: return AutomaticCode;
+            }
+        }
+
+        private static string NormalizeCode(string code)
+        {
+            if (string.IsNullOrWhiteSpace(code)) return AutomaticCode;
+            code = code.Trim();
+            return IsBuiltInCode(code) ? code.ToLowerInvariant() : code;
+        }
+
+        private static string TranslateFromPack(string code, string french, string english)
+        {
+            try
+            {
+                if (!LanguagePacks.TryGet(code, out LanguagePack pack)) return null;
+                if (pack.TryTranslate(english, out string translation)) return translation;
+                if (pack.TryTranslate(french, out translation)) return translation;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[UiLanguage] Language pack lookup failed for '{code}': {ex}");
+            }
+            return null;
+        }
+
+        private static string ResolveCode()
+        {
+            string choice = ChoiceCode;
+            if (choice == FrenchCode || choice == EnglishCode) return choice;
+            if (choice != AutomaticCode)
+            {
+                try
+                {
+                    if (LanguagePacks.TryGet(choice, out LanguagePack chosen)) return chosen.Code;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[UiLanguage] Unable to load language '{choice}': {ex}");
+                }
+                // The pack is missing or unreadable: behave as Automatic.
+            }
+
+            try
+            {
+                if (!string.IsNullOrEmpty(_revitLanguage))
+                {
+                    if (string.Equals(_revitLanguage, "French", StringComparison.OrdinalIgnoreCase)) return FrenchCode;
+                    LanguagePack fromRevit = LanguagePacks.FindByRevitLanguage(_revitLanguage);
+                    if (fromRevit != null) return fromRevit.Code;
+                    return EnglishCode;
+                }
+
+                string system = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+                if (string.Equals(system, FrenchCode, StringComparison.OrdinalIgnoreCase)) return FrenchCode;
+                if (LanguagePacks.TryGet(system, out LanguagePack fromSystem)) return fromSystem.Code;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[UiLanguage] Automatic language detection failed: {ex}");
+            }
+            return EnglishCode;
         }
 
         public static void LocalizeWindow(Window window)
         {
-            if (window == null || !IsEnglish || !IsBIMaestroWindow(window)) return;
+            if (window == null || IsFrench || !IsBIMaestroWindow(window)) return;
 
             try
             {
@@ -141,7 +294,7 @@ namespace BIMaestro.Localization
 
         private static void OnContextMenuOpening(object sender, ContextMenuEventArgs e)
         {
-            if (!IsEnglish || !(sender is FrameworkElement element)) return;
+            if (IsFrench || !(sender is FrameworkElement element)) return;
 
             try
             {
@@ -277,29 +430,40 @@ namespace BIMaestro.Localization
             Debug.WriteLine($"[UiLanguage] Localization skipped for '{sourceType}': {ex}");
         }
 
-        private static UiLanguageChoice LoadChoice()
+        private static string LoadChoice()
         {
             try
             {
                 string path = GetSettingsPath();
-                if (!File.Exists(path)) return UiLanguageChoice.Automatic;
+                if (!File.Exists(path)) return AutomaticCode;
                 var settings = JsonConvert.DeserializeObject<LanguageSettings>(File.ReadAllText(path));
-                return settings?.Language ?? UiLanguageChoice.Automatic;
+                if (settings == null) return AutomaticCode;
+                // Files written before language packs only contain the enum value.
+                return string.IsNullOrWhiteSpace(settings.LanguageCode)
+                    ? ToCode(settings.Language)
+                    : NormalizeCode(settings.LanguageCode);
             }
             catch
             {
-                return UiLanguageChoice.Automatic;
+                return AutomaticCode;
             }
         }
 
-        private static bool SaveChoice(UiLanguageChoice choice)
+        private static bool SaveChoice(string code)
         {
             try
             {
                 string path = GetSettingsPath();
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
-                File.WriteAllText(path, JsonConvert.SerializeObject(
-                    new LanguageSettings { Language = choice }, Formatting.Indented));
+                var settings = new LanguageSettings
+                {
+                    // Keep the enum readable by older BIMaestro versions.
+                    Language = code == FrenchCode ? UiLanguageChoice.French
+                        : code == EnglishCode ? UiLanguageChoice.English
+                        : UiLanguageChoice.Automatic,
+                    LanguageCode = code
+                };
+                File.WriteAllText(path, JsonConvert.SerializeObject(settings, Formatting.Indented));
                 return true;
             }
             catch
@@ -318,6 +482,7 @@ namespace BIMaestro.Localization
         private sealed class LanguageSettings
         {
             public UiLanguageChoice Language { get; set; }
+            public string LanguageCode { get; set; }
         }
     }
 

@@ -838,7 +838,7 @@ private List<string> GetImportNames(Document doc)
         {
             get
             {
-                if (!UiLanguage.IsEnglish) return Type;
+                if (UiLanguage.IsFrench) return Type;
                 return Type switch
                 {
                     "Famille" => "Family",

@@ -301,6 +301,7 @@
     <Compile Include="Controls\SimpleColorPicker.xaml.cs">
       <DependentUpon>SimpleColorPicker.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Localization\LanguagePacks.cs" />
     <Compile Include="Localization\UiLanguage.cs" />
     <Compile Include="animation touche\chargement et salto\StuntSpinner.xaml.cs">
       <DependentUpon>StuntSpinner.xaml</DependentUpon>
@@ -327,6 +328,9 @@
     <Compile Include="app et excel\Touche\AppUI.cs" />
     <Compile Include="app et excel\Touche\RibbonToolTipExamples.cs" />
     <Content Include="Content\ToolTipExamples\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Content\Languages\*.json" Exclude="Content\Languages\_*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Compile Include="app et excel\Supabase\ApiKeys.cs" />

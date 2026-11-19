@@ -44,7 +44,9 @@ namespace BIMaestro.RibbonLayout
             LastName = _welcomeState.LastName ?? string.Empty;
             Company = _welcomeState.Company ?? string.Empty;
             LanguageOptions = UiLanguage.Options;
-            SelectedLanguage = LanguageOptions.First(option => option.Value == UiLanguage.Choice);
+            SelectedLanguage = LanguageOptions.FirstOrDefault(option =>
+                string.Equals(option.Code, UiLanguage.ChoiceCode, System.StringComparison.OrdinalIgnoreCase))
+                ?? LanguageOptions.First();
             _radialHotkey = RadialButtonsPreferencesManager.Load().Hotkey;
             _radialHotkeyText = FormatHotkey(_radialHotkey);
 
@@ -238,10 +240,10 @@ namespace BIMaestro.RibbonLayout
                 return;
             }
             bool languageChanged = SelectedLanguage != null &&
-                SelectedLanguage.Value != UiLanguage.Choice;
+                !string.Equals(SelectedLanguage.Code, UiLanguage.ChoiceCode, System.StringComparison.OrdinalIgnoreCase);
             bool languageSaved = true;
             if (SelectedLanguage != null)
-                languageSaved = UiLanguage.SetChoice(SelectedLanguage.Value);
+                languageSaved = UiLanguage.SetChoice(SelectedLanguage.Code);
             SaveWelcomeProfile();
 
             if (!languageSaved)

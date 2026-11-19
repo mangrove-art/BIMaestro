@@ -265,7 +265,7 @@ namespace ScanTextRevit
 
         private void AddHeader(string text)
         {
-            if (UiLanguage.IsEnglish && !string.IsNullOrWhiteSpace(text))
+            if (!UiLanguage.IsFrench && !string.IsNullOrWhiteSpace(text))
             {
                 if (text.StartsWith("Feuille :", StringComparison.CurrentCultureIgnoreCase))
                     text = "Sheet:" + text.Substring("Feuille :".Length);

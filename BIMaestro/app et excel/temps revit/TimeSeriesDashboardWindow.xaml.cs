@@ -170,7 +170,7 @@ namespace BIMaestro.Dashboard
             DateTime start = DateTime.Today.AddDays(1 - _days);
             var recent = _all.Where(x => x.When.Date >= start && x.When.Date <= DateTime.Today).ToList();
             var totals = Totals(recent);
-            OverviewPeriod.Text = start.ToString("dd MMM", CultureInfo.GetCultureInfo(UiLanguage.IsEnglish ? "en-GB" : "fr-FR")) + " — " + DateTime.Today.ToString("dd MMM yyyy", CultureInfo.GetCultureInfo(UiLanguage.IsEnglish ? "en-GB" : "fr-FR"));
+            OverviewPeriod.Text = start.ToString("dd MMM", UiLanguage.Culture) + " — " + DateTime.Today.ToString("dd MMM yyyy", UiLanguage.Culture);
             OverviewHours.Text = Duration(recent.Sum(x => x.Hours));
             OverviewAverage.Text = Duration(recent.Sum(x => x.Hours) / Math.Max(1, recent.Select(x => x.When.Date).Distinct().Count()));
             OverviewCount.Text = totals.Count.ToString();
@@ -281,7 +281,7 @@ namespace BIMaestro.Dashboard
             int bucketDays = days <= 31 ? 1 : days <= 180 ? 7 : Math.Max(30, (int)Math.Ceiling(days / 60.0));
             int count = (int)Math.Ceiling(days / (double)bucketDays);
             var axis = new CategoryAxis { Position = AxisPosition.Bottom, GapWidth = 0.35, Angle = count > 7 ? -45 : 0, MajorStep = Math.Max(1, (int)Math.Ceiling(count / 8.0)), TickStyle = TickStyle.None, IsZoomEnabled = false, IsPanEnabled = false };
-            for (int i = 0; i < count; i++) axis.Labels.Add(start.AddDays(i * bucketDays).ToString(days <= 7 ? "ddd\ndd" : days <= 15 ? "dd/MM" : days > 365 ? "dd/MM/yy" : "dd/MM", CultureInfo.GetCultureInfo(UiLanguage.IsEnglish ? "en-GB" : "fr-FR")));
+            for (int i = 0; i < count; i++) axis.Labels.Add(start.AddDays(i * bucketDays).ToString(days <= 7 ? "ddd\ndd" : days <= 15 ? "dd/MM" : days > 365 ? "dd/MM/yy" : "dd/MM", UiLanguage.Culture));
             model.Axes.Add(axis);
             var hours = rows.GroupBy(x => (x.When.Date - start).Days / bucketDays).ToDictionary(x => x.Key, x => x.Sum(y => y.Hours));
             double peak = hours.Count == 0 ? 0 : hours.Values.Max();
@@ -294,8 +294,8 @@ namespace BIMaestro.Dashboard
                 hours.TryGetValue(i, out double h);
                 var bucketStart = start.AddDays(i * bucketDays);
                 var bucketEnd = end.AddDays(-Math.Max(0, (end - bucketStart).Days - bucketDays + 1));
-                string period = bucketStart.ToString("dd MMM yyyy", CultureInfo.GetCultureInfo(UiLanguage.IsEnglish ? "en-GB" : "fr-FR"));
-                if (bucketDays > 1) period += UiLanguage.T(" au ", " to ") + bucketEnd.ToString("dd MMM yyyy", CultureInfo.GetCultureInfo(UiLanguage.IsEnglish ? "en-GB" : "fr-FR"));
+                string period = bucketStart.ToString("dd MMM yyyy", UiLanguage.Culture);
+                if (bucketDays > 1) period += UiLanguage.T(" au ", " to ") + bucketEnd.ToString("dd MMM yyyy", UiLanguage.Culture);
                 if (h > 0) series.Items.Add(new RectangleBarItem(i - .3, 0, i + .3, h) { Title = period + " · " + Duration(h) });
             }
             model.Series.Add(series);

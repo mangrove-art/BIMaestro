@@ -1737,7 +1737,7 @@ namespace Modification
 
         private static void LocalizeStableComboBoxItems(params ComboBox[] comboBoxes)
         {
-            if (!UiLanguage.IsEnglish || comboBoxes == null) return;
+            if (UiLanguage.IsFrench || comboBoxes == null) return;
 
             foreach (ComboBox comboBox in comboBoxes)
             {

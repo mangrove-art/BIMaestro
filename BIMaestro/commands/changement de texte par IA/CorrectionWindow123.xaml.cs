@@ -105,7 +105,7 @@ namespace IA
             {
                 // MessageBox.Show utilise la constante définie dans AiClient
                 MessageBox.Show(
-                    UiLanguage.IsEnglish ? "Your AI quota has been exceeded." : AiClient.QuotaExceededMessage,
+                    !UiLanguage.IsFrench ? "Your AI quota has been exceeded." : AiClient.QuotaExceededMessage,
                     UiLanguage.T("Quota dépassé", "Quota Exceeded"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning
@@ -180,7 +180,7 @@ namespace IA
 
         private string GeneratePrompt(string inputText, string style, string customInstruction)
         {
-            if (UiLanguage.IsEnglish)
+            if (!UiLanguage.IsFrench)
             {
                 return style switch
                 {
